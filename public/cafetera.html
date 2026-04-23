@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tempus Coffee</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="container">
+  <img src="assets/img/logo/tempus-logo.png" alt="Tempus Coffee" class="main-logo">
+  
+  <h1>Tempus Coffee</h1>
+  <p class="instruction">Selecciona tu bebida:</p>
+
+  <div class="drink-selector">
+    <div class="drink-card" onclick="seleccionarBebida('Americano', this)">
+      <img src="assets/drinks/americano.jpg" alt="Americano">
+      <span>Americano</span>
+    </div>
+    
+    <div class="drink-card" onclick="seleccionarBebida('Americano con Leche', this)">
+      <img src="assets/drinks/Americano con leche.png" alt="Americano con leche">
+      <span>Con Leche</span>
+    </div>
+    
+    <div class="drink-card" onclick="seleccionarBebida('Mocha latte', this)">
+      <img src="assets/drinks/Mocha latte.png" alt="Mocha latte">
+      <span>Mocha latte</span>
+    </div>
+
+    <div class="drink-card" onclick="seleccionarBebida('Cocoa', this)">
+      <img src="assets/drinks/cocoa.png" alt="Cocoa"> 
+      <span>Cocoa</span>
+    </div>
+  </div>
+
+  <button onclick="prepararSeleccionado()" id="btn-preparar" disabled>Preparar ahora</button>
+  
+  <p id="status">Estado: Esperando selección...</p>
+
+  <footer class="credits">
+    <a href="http://www.freepik.com" target="_blank">Designed by Freepik</a>
+  </footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
