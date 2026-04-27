@@ -1,10 +1,9 @@
 <?php
-
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-
+use App\Models\User;
 /*
 |--------------------------------------------------------------------------
 | API Cafetera-IA: Flujo Definitivo
@@ -45,7 +44,7 @@ Route::post('/v1/pedir', function (Request $request) {
     Cache::put('orden_actual', $orden, now()->addSeconds(10));
 
     return response()->json(['status' => 'success', 'message' => 'Preparando ' . $bebida->nombre]);
-});
+})->middleware('auth:sanctum');
 
 // 2. GET /v1/cafetera/orden (Consulta del ESP32)
 Route::get('/v1/cafetera/orden', function () {
@@ -99,7 +98,41 @@ Route::post('/v1/cafetera/reportar', function (Request $request) {
 
     return response()->json(['res' => 'Proceso ignorado o error de estatus'], 400);
 });
-// Esta es la que nos faltaba para ver la magia en el navegador
+
+
 Route::get('/v1/historial', function () {
     return response()->json(DB::table('historial_detallado')->get());
+
+
+});
+
+Route::post('/v1/login', function (Request $request) {
+    // Validamos que lleguen los campos correctos
+    $request->validate([
+        'username' => 'required',
+        'password' => 'required',
+    ]);
+
+    // Buscamos al usuario por su 'username'
+    $user = User::where('username', $request->username)->first();
+
+    // Verificamos credenciales y si la cuenta está activa
+    if (!$user || !Hash::check($request->password, $user->password)) {
+        return response()->json(['message' => 'Usuario o contraseña incorrectos'], 401);
+    }
+    
+    if (!$user->cuenta_activa) {
+        return response()->json(['message' => 'Esta cuenta de cafetera está desactivada'], 403);
+    }
+
+    // Limpiamos tokens viejos y creamos el nuevo
+    $user->tokens()->delete();
+    $token = $user->createToken('token_cafetera')->plainTextToken;
+
+    return response()->json([
+        'status' => 'success',
+        'token'  => $token,
+        'user'   => $user->name, // Devolvemos el nombre real para el saludo
+        'username' => $user->username
+    ]);
 });
