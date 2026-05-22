@@ -33,8 +33,8 @@
     .user-avatar { width: 32px; height: 32px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 0.8rem; }
     .btn-logout { background: transparent; border: none; color: var(--gold-light); font-size: 0.7rem; cursor: pointer; text-decoration: underline; }
 
-    /* LOGIN */
-    #login-screen { position: fixed; inset: 0; z-index: 180; background: #110d08; display: flex; align-items: center; justify-content: center; transition: 0.5s; }
+    /* LOGIN  */
+    #login-screen { position: fixed; inset: 0; z-index: 180; background: transparent; display: flex; align-items: center; justify-content: center; transition: 0.5s; }
     #login-screen.hidden { opacity: 0; visibility: hidden; }
     .login-card { width: min(380px, 90%); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; text-align: center; backdrop-filter: blur(10px); }
     .field-input { width: 100%; padding: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: white; margin-top: 5px; outline: none; }
@@ -70,7 +70,7 @@
     .btn-nav.left { left: 10px; }
     .btn-nav.right { right: 10px; }
 
-    /* BOTÓN PREPARAR */
+    /* BOTONES */
     .btn-gold {
       width: 260px; padding: 18px; background: var(--gold); color: white;
       border: none; border-radius: 50px; font-weight: 600; cursor: pointer;
@@ -78,6 +78,16 @@
       z-index: 170; position: relative;
     }
     .btn-gold:active { transform: scale(0.95); }
+
+    /* BOTÓN DE CONFIGURACIÓN WI-FI */
+    .btn-outline {
+      width: 260px; padding: 12px; background: transparent; color: var(--gold-light);
+      border: 1px solid var(--gold); border-radius: 50px; font-weight: 500; cursor: pointer;
+      transition: 0.3s; z-index: 170; position: relative; margin-top: 15px;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .btn-outline:hover { background: rgba(201,123,44,0.1); color: white; }
+    .btn-outline:active { transform: scale(0.95); }
 
     .footer-credits { margin-top: 25px; font-size: 0.65rem; color: rgba(245, 237, 224, 0.4); text-transform: uppercase; letter-spacing: 1px; }
     .footer-credits a { color: var(--gold-light); text-decoration: none; }
@@ -98,7 +108,7 @@
 
   <div id="login-screen">
     <form class="login-card" id="login-form" onsubmit="event.preventDefault(); doLogin();">
-      <img src="assets/img/logo/tempus-logo.png" style="width:70px; margin-bottom:15px">
+      <img src="assets/img/logo/tempus-logo.png" style="width:70px; margin-bottom:15px" alt="Logo">
       <h2 style="font-family:'Playfair Display'; color:var(--gold); margin-bottom:20px">Bienvenido</h2>
       <input class="field-input" type="text" id="login-user" placeholder="Ej: BrewLover">
       <input class="field-input" type="password" id="login-pass" placeholder="Contraseña" style="margin-bottom:20px">
@@ -108,7 +118,7 @@
   </div>
 
   <div id="app">
-    <img src="assets/img/logo/tempus-logo.png" style="width: 50px; margin-bottom: 5px;">
+    <img src="assets/img/logo/tempus-logo.png" style="width: 50px; margin-bottom: 5px;" alt="Logo Mini">
     <h1 style="font-family: 'Playfair Display'; font-size: 1.8rem; margin-bottom: 5px;">Tempus Coffee</h1>
     
     <div class="carousel-container">
@@ -124,6 +134,10 @@
     <button class="btn-gold" id="btn-order" onclick="pedirBebida()">PREPARAR AHORA</button>
     <p id="status" style="margin-top:15px; color:var(--gold-light); font-size:0.9rem">Desliza para elegir</p>
     
+    <button class="btn-outline" onclick="window.location.href='config_wifi.html'">
+      ⚙️ Configurar Wi-Fi Cafetera
+    </button>
+    
     <div class="footer-credits">
       <p>© Tempus Coffee 2024</p>
       <p>© Designed by <a href="https://www.freepik.com" target="_blank">Freepik</a></p>
@@ -131,8 +145,7 @@
   </div>
 
   <script>
-    
-    const API_BASE = "//192.168.0.101:8000/api/v1"; 
+    const API_BASE = "http://192.168.0.101:8000/api/v1"; 
 
     const DRINKS = [
       { name: 'Americano', api: 'Americano', img: 'assets/drinks/americano.jpg' },
@@ -144,58 +157,43 @@
     let current = 0;
     let token = localStorage.getItem('coffee_token');
 
-    // --- LÓGICA DE CARRUSEL CIRCULAR ---
     function updateCarousel() {
       const cards = document.querySelectorAll('.drink-card');
       const total = DRINKS.length;
+      if(cards.length === 0) return;
 
       cards.forEach((card, i) => {
-        // Cálculo matemático para carrusel circular
         let offset = i - current;
-        
-        // Ajuste para que los elementos den la vuelta (circular)
         if (offset > total / 2) offset -= total;
         if (offset < -total / 2) offset += total;
 
         const isCenter = offset === 0;
         const opacity = isCenter ? 1 : (Math.abs(offset) > 1 ? 0 : 0.3);
         const scale = isCenter ? 1 : 0.6;
-        const rotate = offset * 15; // Un poco de rotación 3D
+        const rotate = offset * 15; 
         
         card.style.transform = `translateX(${offset * 120}%) scale(${scale}) rotateY(${rotate}deg)`;
         card.style.opacity = opacity;
         card.style.zIndex = isCenter ? 100 : 10;
         card.style.pointerEvents = isCenter ? "auto" : "none";
       });
-
       document.getElementById('status').textContent = `${DRINKS[current].name} listo para preparar`;
     }
 
-    function nextDrink() {
-      current = (current + 1) % DRINKS.length;
-      updateCarousel();
-    }
+    function nextDrink() { current = (current + 1) % DRINKS.length; updateCarousel(); }
+    function prevDrink() { current = (current - 1 + DRINKS.length) % DRINKS.length; updateCarousel(); }
 
-    function prevDrink() {
-      current = (current - 1 + DRINKS.length) % DRINKS.length;
-      updateCarousel();
-    }
-
-    // --- SOPORTE TOUCH (SWIPE) ---
     let touchStartX = 0;
     const touchZone = document.getElementById('touch-zone');
-
     touchZone.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, false);
     touchZone.addEventListener('touchend', e => {
       let touchEndX = e.changedTouches[0].screenX;
       let diff = touchStartX - touchEndX;
-      if (Math.abs(diff) > 50) { // Umbral de 50px
-        if (diff > 0) nextDrink();
-        else prevDrink();
+      if (Math.abs(diff) > 50) { 
+        if (diff > 0) nextDrink(); else prevDrink();
       }
     }, false);
 
-    // --- LOGIN Y API ---
     async function doLogin() {
       const user = document.getElementById('login-user').value;
       const pass = document.getElementById('login-pass').value;
@@ -212,8 +210,8 @@
           localStorage.setItem('coffee_token', token);
           localStorage.setItem('user_name', data.user);
           showApp(data.user);
-        } else { err.textContent = data.message; }
-      } catch (e) { err.textContent = "Error de conexión"; }
+        } else { err.textContent = data.message || "Error al iniciar sesión"; }
+      } catch (e) { err.textContent = "Error de conexión con el servidor"; }
     }
 
     function showApp(name) {
@@ -234,13 +232,14 @@
       DRINKS.forEach((d, i) => {
         const card = document.createElement('div');
         card.className = 'drink-card';
-        card.innerHTML = `<img src="${d.img}" class="card-img"><span class="drink-name">${d.name}</span>`;
+        card.innerHTML = `<img src="${d.img}" class="card-img" alt="${d.name}"><span class="drink-name">${d.name}</span>`;
         track.appendChild(card);
       });
       updateCarousel();
     }
 
     async function pedirBebida() {
+      if (!token) { alert("Sesión expirada o no válida. Inicia sesión de nuevo."); logout(); return; }
       const status = document.getElementById('status');
       status.textContent = "Enviando orden...";
       try {
@@ -252,13 +251,20 @@
         if (res.ok) {
           status.textContent = "✅ ¡Preparando!";
           window.speechSynthesis.speak(new SpeechSynthesisUtterance("Preparando " + DRINKS[current].name));
-        } else { status.textContent = "❌ Error"; }
+        } else { 
+          if(res.status === 401) { status.textContent = "❌ Sesión no válida"; } 
+          else { status.textContent = "❌ Error en el servidor"; }
+        }
       } catch (e) { status.textContent = "❌ Error conexión"; }
     }
 
-    function logout() { localStorage.clear(); location.reload(); }
+    function logout() { 
+      localStorage.removeItem('coffee_token');
+      localStorage.removeItem('user_name');
+      location.reload(); 
+    }
 
-    // --- PARTÍCULAS (IDÉNTICAS AL ANTERIOR) ---
+    // --- PARTÍCULAS ACTUALIZADAS (Más grandes y visibles) ---
     const canvas = document.getElementById('particle-canvas');
     const ctx = canvas.getContext('2d');
     let W, H, particles = [];
@@ -266,7 +272,14 @@
       W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight;
       particles = [];
       for (let i = 0; i < 60; i++) {
-        particles.push({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3, r: Math.random() * 1.5 });
+        // Aquí aumentamos el tamaño de las partículas (de 1.5 a un radio entre 1.5 y 4.5)
+        particles.push({ 
+          x: Math.random() * W, 
+          y: Math.random() * H, 
+          vx: (Math.random() - 0.5) * 0.3, 
+          vy: (Math.random() - 0.5) * 0.3, 
+          r: Math.random() * 3 + 1.5 
+        });
       }
       tick();
     }
@@ -277,15 +290,21 @@
         if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
         if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(201, 123, 44, 0.4)"; ctx.fill();
+        // Aquí subimos la opacidad a 0.6 para que brillen más
+        ctx.fillStyle = "rgba(201, 123, 44, 0.6)"; 
+        ctx.fill();
       });
       requestAnimationFrame(tick);
     }
 
     window.onload = () => {
       initParticles();
-      if(token && localStorage.getItem('user_name')) showApp(localStorage.getItem('user_name'));
+      const savedToken = localStorage.getItem('coffee_token');
+      const savedName = localStorage.getItem('user_name');
+      if(savedToken && savedName) { token = savedToken; showApp(savedName); }
     };
+
+    window.onresize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
   </script>
 </body>
 </html>

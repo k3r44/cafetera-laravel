@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Configurar Wi-Fi - Tempus Coffee</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --gold: #c97b2c; --gold-light: #e8a84a;
+            --bg-dark: #110d08; --cream: #f5ede0;
+        }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-dark); color: var(--cream);
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #particle-canvas { position: fixed; inset: 0; z-index: 150; pointer-events: none; }
+        .ambient { position: fixed; inset: 0; pointer-events: none; z-index: 0; background: radial-gradient(ellipse 60% 50% at 50% 60%, rgba(201,123,44,0.1) 0%, transparent 70%); }
+
+        .config-card {
+            position: relative; z-index: 180;
+            width: min(380px, 90%); background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 24px;
+            padding: 40px; text-align: center; backdrop-filter: blur(10px);
+        }
+
+        h2 { font-family: 'Playfair Display', serif; color: var(--gold); margin-bottom: 10px; font-size: 1.8rem; }
+        
+        .form-group { text-align: left; margin-bottom: 15px; }
+        label { display: block; font-weight: 500; margin-bottom: 8px; color: var(--gold-light); font-size: 0.9rem; }
+        
+        input[type="text"], input[type="password"] {
+            width: 100%; padding: 12px; background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+            color: white; outline: none; font-family: 'DM Sans', sans-serif;
+        }
+        input[type="text"]:focus, input[type="password"]:focus { border-color: var(--gold); }
+        input::placeholder { color: rgba(255,255,255,0.3); }
+
+        .btn-gold {
+            width: 100%; padding: 16px; background: var(--gold); color: white;
+            border: none; border-radius: 50px; font-weight: 600; cursor: pointer;
+            box-shadow: 0 8px 20px rgba(201,123,44,0.3); transition: 0.3s;
+            margin-top: 15px; font-family: 'DM Sans', sans-serif;
+        }
+        .btn-gold:hover { background: var(--gold-light); }
+        .btn-gold:active { transform: scale(0.95); }
+
+        .btn-back {
+            background: transparent; border: none; color: rgba(245, 237, 224, 0.6);
+            font-size: 0.8rem; cursor: pointer; text-decoration: underline;
+            margin-top: 20px; font-family: 'DM Sans', sans-serif;
+        }
+        .btn-back:hover { color: var(--gold-light); }
+
+        .status { margin-top: 20px; font-size: 0.85rem; color: var(--gold-light); min-height: 40px; }
+    </style>
+</head>
+<body>
+
+    <div class="ambient"></div>
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="config-card">
+        <h2>Tempus Coffee</h2>
+        <p style="color: rgba(245, 237, 224, 0.7); font-size: 0.9rem; margin-bottom: 25px;">Configuración de Red Wi-Fi</p>
+        
+        <div class="form-group">
+            <label for="wifi-ssid">Nombre del Wi-Fi (SSID)</label>
+            <input type="text" id="wifi-ssid" placeholder="Ej: MiCasa_2.4G">
+        </div>
+
+        <div class="form-group">
+            <label for="wifi-pass">Contraseña</label>
+            <input type="password" id="wifi-pass" placeholder="Dejar vacío si es red abierta">
+        </div>
+
+        <button class="btn-gold" onclick="transmitirCredenciales()">Vincular Cafetera</button>
+        
+        <div class="status" id="status-text">Esperando acción...</div>
+
+        <button class="btn-back" onclick="window.location.href='index.html'">Volver al Panel Principal</button>
+    </div>
+
+    <script>
+        async function transmitirCredenciales() {
+            const statusText = document.getElementById('status-text');
+            const ssid = document.getElementById('wifi-ssid').value.trim();
+            const pass = document.getElementById('wifi-pass').value;
+
+            if (!ssid) {
+                statusText.innerText = "⚠️ Por favor, escribe el nombre del Wi-Fi.";
+                statusText.style.color = "#ff6b6b";
+                return;
+            }
+
+            statusText.innerText = "Buscando cafetera Tempus...";
+            statusText.style.color = "var(--gold-light)";
+
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['4fafc201-1fb5-459e-8fcc-c5c9c331914b']
+                });
+
+                statusText.innerText = "Conectando al dispositivo...";
+                const server = await device.gatt.connect();
+                
+                statusText.innerText = "Accediendo al canal seguro...";
+                const service = await server.getPrimaryService('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
+                const characteristic = await service.getCharacteristic('beb5483e-36e1-4688-b7f5-ea07361b26a8');
+
+                const datosEnvio = `${ssid},${pass}`;
+                
+                statusText.innerText = "Transmitiendo credenciales...";
+                const encoder = new TextEncoder();
+                await characteristic.writeValue(encoder.encode(datosEnvio));
+
+                statusText.innerText = "✅ ¡Éxito! La cafetera se está conectando a la red.";
+                statusText.style.color = "#4ade80"; 
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "❌ Error: " + error.message;
+                statusText.style.color = "#ff6b6b";
+            }
+        }
+
+        // --- PARTÍCULAS ACTUALIZADAS (Más grandes y visibles) ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let W, H, particles = [];
+        
+        function initParticles() {
+            W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight;
+            particles = [];
+            for (let i = 0; i < 60; i++) {
+                // Aumentamos el tamaño de las partículas de 1.5 a un radio entre 1.5 y 4.5
+                particles.push({ 
+                    x: Math.random() * W, 
+                    y: Math.random() * H, 
+                    vx: (Math.random() - 0.5) * 0.3, 
+                    vy: (Math.random() - 0.5) * 0.3, 
+                    r: Math.random() * 3 + 1.5 
+                });
+            }
+            tick();
+        }
+        
+        function tick() {
+            ctx.clearRect(0, 0, W, H);
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+                if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                // Subimos la opacidad a 0.6 para que destaquen más
+                ctx.fillStyle = "rgba(201, 123, 44, 0.6)"; 
+                ctx.fill();
+            });
+            requestAnimationFrame(tick);
+        }
+        
+        window.onload = initParticles;
+        window.onresize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
+    </script>
+</body>
+</html>

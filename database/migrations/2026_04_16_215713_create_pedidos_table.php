@@ -6,23 +6,18 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
- 	public function up(): void {
-    Schema::create('pedidos', function (Blueprint $table) {
-        $table->id();
-        $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-        $table->foreignId('bebida_id')->constrained('bebidas'); // Aquí ya existe la tabla bebidas
-        $table->enum('metodo', ['manual', 'voz', 'ia']);
-        $table->enum('estado', ['completado', 'error'])->default('completado');
-        $table->timestamps();
-    });
-}
+    public function up(): void {
+        Schema::create('pedidos', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            $table->foreignId('bebida_id')->constrained('bebidas'); 
+            // AQUÍ ESTÁ LA MAGIA: Agregamos 'app' a la lista VIP
+            $table->enum('metodo', ['manual', 'voz', 'ia', 'app']);
+            $table->enum('estado', ['completado', 'error'])->default('completado');
+            $table->timestamps();
+        });
+    }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('pedidos');
