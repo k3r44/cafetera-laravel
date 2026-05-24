@@ -4,11 +4,12 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
-use Illuminate\Support\Facades\Hash; // Agregado para que no falle el Hash::check del login
+use Illuminate\Support\Facades\Hash;
 use PhpMqtt\Client\MqttClient;
+
 /*
 |--------------------------------------------------------------------------
-| API Cafetera-IA: Flujo Definitivo
+| API Cafetera: Flujo App Web + MQTT (Simplificado)
 |--------------------------------------------------------------------------
 */
 
@@ -18,7 +19,7 @@ Route::post('/v1/pedir', function (Request $request) {
         return response()->json(['error' => 'Cafetera ocupada'], 429);
     }
 
-    // Buscamos la bebida en la base de datos por el nombre que viene en 'metodo'
+    // Buscamos la bebida en la base de datos
     $bebida = DB::table('bebidas')
                 ->where('nombre', $request->input('metodo'))
                 ->first();
@@ -27,28 +28,40 @@ Route::post('/v1/pedir', function (Request $request) {
         return response()->json(['error' => 'Bebida no encontrada: ' . $request->input('metodo')], 404);
     }
 
-    // Decodificamos la receta (que viene como string JSON de la DB)
-    $receta = json_decode($bebida->receta, true);
-
+    // Guardamos la orden en caché (solo para bloquear la cafetera temporalmente y guardarla al final)
     $orden = [
-        'user_id'   => 1, // Por ahora fijo para pruebas
+        'user_id'   => $request->user()->id,
         'bebida_id' => $bebida->id,
         'nombre'    => $bebida->nombre,
-        'metodo'    => 'app', // Ahora sí funcionará porque la BD lo aceptará
-        'receta'    => [
-            'cafe'  => (bool)($receta['cafe'] ?? false),
-            'agua'  => (bool)($receta['agua'] ?? false),
-            'leche' => (bool)($receta['leche'] ?? false),
-            'cocoa' => (bool)($receta['cocoa'] ?? false),
-        ]
+        'metodo'    => 'app' // Fijo para ti, ya que es la app web
     ];
 
     Cache::put('orden_actual', $orden, now()->addMinutes(10));
 
+    //  EL PUENTE MQTT: Disparamos la orden a Mosquitto 
+    try {
+        $mqtt = new \PhpMqtt\Client\MqttClient('127.0.0.1', 1883, 'laravel_publisher_pedidos');
+        $mqtt->connect();
+        
+        // PUBLICAMOS SOLO EL ID (La lógica de ingredientes se hace en el ESP32)
+        $payload = [
+            'bebida_id' => $bebida->id,
+            'nombre'    => $bebida->nombre
+        ];
+
+        $mqtt->publish('tempus/ordenes', json_encode($payload), 0);
+        $mqtt->disconnect();
+        
+    } catch (\Exception $e) { 
+        Cache::forget('orden_actual'); 
+        return response()->json(['error' => 'Broker MQTT desconectado, revisa el servidor'], 500); 
+    }
+
     return response()->json(['status' => 'success', 'message' => 'Preparando ' . $bebida->nombre]);
 })->middleware('auth:sanctum');
 
-// 2. GET /v1/cafetera/orden (Consulta del ESP32)
+
+// 2. GET /v1/cafetera/orden (Consulta del ESP32 por si falla MQTT)
 Route::get('/v1/cafetera/orden', function () {
     $orden = Cache::get('orden_actual');
     
@@ -56,58 +69,76 @@ Route::get('/v1/cafetera/orden', function () {
         return response()->json(['comando' => 0]);
     }
 
+    // Enviamos solo el ID de la bebida, sin los booleanos
     return response()->json([
-        'comando' => 1,
-        'receta'  => $orden['receta'],
-        'nombre'  => $orden['nombre']
+        'comando'   => 1,
+        'bebida_id' => $orden['bebida_id'],
+        'nombre'    => $orden['nombre']
     ]);
 });
 
 
-
-// 3. POST /v1/cafetera/reportar (Cierre del proceso - HTTP / Thunder Client)
+// 3. POST /v1/cafetera/reportar (Cierre del proceso)
 Route::post('/v1/cafetera/reportar', function (Request $request) {
     $status = $request->input('status'); 
     $orden  = Cache::get('orden_actual');
 
-    // CASO 1: Botón físico (No hay nada en Redis)
+    // --- CASO 1: Pedido Dinámico por Asistente de Voz / IA (No hay nada en Redis) ---
     if (!$orden) {
         if ($status === 'finalizado') {
+            
+            // Recolección dinámica de datos desde el payload
+            $bebidaId = $request->input('bebida_id');
+            $nombreBebida = $request->input('nombre');
+            
+            // Si la IA manda el nombre en vez del ID, la API lo busca sola en la BD
+            if (!$bebidaId && $nombreBebida) {
+                $bebidaDB = DB::table('bebidas')->where('nombre', $nombreBebida)->first();
+                if ($bebidaDB) {
+                    $bebidaId = $bebidaDB->id;
+                }
+            }
+
+            // Validación de seguridad: Asegurar que haya una bebida para guardar
+            if (!$bebidaId) {
+                return response()->json(['error' => 'No se proporciono una bebida valida para guardar'], 400);
+            }
+
+            // Inserción dinámica (toma lo que venga o usa los valores por defecto)
             DB::table('pedidos')->insert([
-                'user_id'    => 1, 
-                'bebida_id'  => $request->input('bebida_id', 1),
-                'metodo'     => 'manual',
+                'user_id'    => $request->input('user_id', 1), // Defecto: usuario 1 (admin)
+                'bebida_id'  => $bebidaId,
+                'metodo'     => $request->input('metodo', 'voz'), // Defecto: 'voz'
                 'estado'     => 'completado',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             
-            // Opcional: Avisar por MQTT a la interfaz web si el botón físico fue presionado
             try {
                 $mqtt = new \PhpMqtt\Client\MqttClient('127.0.0.1', 1883, 'laravel_reportes');
                 $mqtt->connect();
-                $mqtt->publish('cafetera/estado', json_encode(['evento' => 'manual_finalizado']), 0);
+                $mqtt->publish('cafetera/estado', json_encode(['evento' => 'voz_finalizado', 'mensaje' => 'Cafetera Libre']), 0);
                 $mqtt->disconnect();
             } catch (\Exception $e) { /* Ignorar error de broker */ }
 
-            return response()->json(['res' => 'Pedido fisico registrado con exito']);
+            return response()->json(['res' => 'Pedido dinamico (Voz/IA) registrado con exito']);
         }
     }
 
-    // CASO 2: Pedido de la App
+    // --- CASO 2: Pedido de la App Web (Sí hay datos en Redis) ---
     if ($orden && $status === 'finalizado') {
         DB::table('pedidos')->insert([
             'user_id'    => $orden['user_id'],
             'bebida_id'  => $orden['bebida_id'],
-            'metodo'     => $orden['metodo'], // Inyectará 'app'
+            'metodo'     => $orden['metodo'], // Tomará 'app'
             'estado'     => 'completado',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
+        // Limpiamos el caché para liberar la cafetera
         Cache::forget('orden_actual'); 
 
-        // NUEVO: Publicar por MQTT que la cafetera ya está libre
         try {
             $mqtt = new \PhpMqtt\Client\MqttClient('127.0.0.1', 1883, 'laravel_reportes');
             $mqtt->connect();
@@ -118,29 +149,23 @@ Route::post('/v1/cafetera/reportar', function (Request $request) {
         return response()->json(['res' => 'Pedido de la App guardado y Redis limpio']);
     }
 
+    // Si mandan basura o un estatus que no corresponde
     return response()->json(['res' => 'Proceso ignorado o error de estatus'], 400);
 });
 
+// 4. Rutas de Historial y Login
 Route::get('/v1/historial', function () {
     return response()->json(DB::table('historial_detallado')->get());
 });
 
-
-
-
-
-
 Route::post('/v1/login', function (Request $request) {
-    // Validamos que lleguen los campos correctos
     $request->validate([
         'username' => 'required',
         'password' => 'required',
     ]);
 
-    // Buscamos al usuario por su 'username'
     $user = User::where('username', $request->username)->first();
 
-    // Verificamos credenciales y si la cuenta está activa
     if (!$user || !Hash::check($request->password, $user->password)) {
         return response()->json(['message' => 'Usuario o contraseña incorrectos'], 401);
     }
@@ -149,23 +174,21 @@ Route::post('/v1/login', function (Request $request) {
         return response()->json(['message' => 'Esta cuenta de cafetera está desactivada'], 403);
     }
 
-    // Limpiamos tokens viejos y creamos el nuevo
     $user->tokens()->delete();
     $token = $user->createToken('token_cafetera')->plainTextToken;
 
     return response()->json([
-        'status' => 'success',
-        'token'  => $token,
-        'user'   => $user->name,
+        'status'   => 'success',
+        'token'    => $token,
+        'user'     => $user->name,
         'username' => $user->username
     ]);
 });
 
-// Obtener pedidos del usuario activo (CORREGIDO)
 Route::get('/v1/mis-pedidos', function(Request $request){
     $pedidos = DB::table('pedidos')
         ->join('bebidas','pedidos.bebida_id', '=', 'bebidas.id')
-        ->where('pedidos.user_id', $request->user()->id) // Corregido: pedidos.user_id
+        ->where('pedidos.user_id', $request->user()->id) 
         ->select('pedidos.*', 'bebidas.nombre as nombre_bebida')
         ->orderBy('pedidos.created_at','desc')
         ->get();
